@@ -177,7 +177,7 @@ def get_first_and_last_day_of_week(date):
     )
 
     # 获取给定日期所在周的最后一天（星期日）
-    last_day_of_week = first_day_of_week + timedelta(days=6)
+    last_day_of_week = first_day_of_week + timedelta(days=7) 
 
     return first_day_of_week, last_day_of_week
 

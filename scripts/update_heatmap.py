@@ -1,26 +1,29 @@
-import argparse
 import os
 from utils import upload_image
 from notion_helper import NotionHelper
-def get_file():
-    # 设置文件夹路径
-    folder_path = './OUT_FOLDER'
 
-    # 检查文件夹是否存在
-    if os.path.exists(folder_path) and os.path.isdir(folder_path):
-        entries = os.listdir(folder_path)
-        
+
+def get_file(dir):
+    dir =f"./{dir}"
+    if os.path.exists(dir) and os.path.isdir(dir):
+        entries = os.listdir(dir)
         file_name = entries[0] if entries else None
         return file_name
     else:
         print("OUT_FOLDER does not exist.")
         return None
-    
+
+
+def update_heatmap(dir, block_id):
+    image_file = get_file(dir)
+    if image_file:
+        image_url = f"https://raw.githubusercontent.com/{os.getenv('REPOSITORY')}/{os.getenv('REF').split('/')[-1]}/{dir}/{image_file}"
+        heatmap_url = f"https://heatmap.malinkang.com/?image={image_url}"
+        if block_id:
+            notion_helper.update_heatmap(block_id=block_id, url=heatmap_url)
+
+
 if __name__ == "__main__":
     notion_helper = NotionHelper()
-    image_file = get_file()
-    if image_file:
-        image_url = upload_image(f"heatmap/{os.getenv('REPOSITORY').split('/')[0]}",image_file,f"./OUT_FOLDER/{image_file}")
-        block_id = notion_helper.image_dict.get("id")
-        if(image_url and block_id):
-            notion_helper.update_image_block_link(block_id,image_url)
+    update_heatmap("heatmap/todo",notion_helper.todo_heatmap_block_id)
+    update_heatmap("heatmap/tomato",notion_helper.tomato_heatmap_block_id)

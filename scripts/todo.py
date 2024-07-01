@@ -16,6 +16,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+habit_icon_dict = {
+    "habit_exercising":"https://www.notion.so/icons/gym_gray.svg",
+    "habit_drink_water":"https://www.notion.so/icons/drink_gray.svg"
+}
+
 
 def get_token(client_id, client_secret, code, redirect_uri):
     url = "https://api.ticktick.com/oauth/token"
@@ -91,6 +96,32 @@ def is_tomato_modified(item):
     return True
 
 
+def is_habit_modified(item):
+    id = item.get("id")
+    modified_time = utils.parse_date(item.get("modifiedTime"))
+    habit = habit_dict.get(id)
+    if habit:
+        last_modified_time = utils.get_property_value(
+            habit.get("properties").get("最后修改时间")
+        )
+        if last_modified_time == modified_time:
+            return False
+    return True
+
+
+def is_habit_records_modified(item):
+    id = item.get("id")
+    modified_time = utils.parse_date(item.get("opTime"))
+    habit_record = habit_record_dict.get(id)
+    if habit_record:
+        last_modified_time = utils.get_property_value(
+            habit_record.get("properties").get("最后修改时间")
+        )
+        if last_modified_time == modified_time:
+            return False
+    return True
+
+
 def is_project_modified(item):
     id = item.get("id")
     if item.get("modifiedTime") is None:
@@ -143,28 +174,6 @@ def get_projects():
         print(f" Get projects failed ${r.text}")
 
 
-def get_habits():
-    """获取所有清单"""
-    response = requests.get("https://api.dida365.com/api/v2/habits", headers=headers)
-    print(response.text)
-    with open("habits.json", "w") as f:
-        f.write(json.dumps(response.json(), indent=4, ensure_ascii=False))
-    print(response.status_code)
-
-
-
-def get_completed():
-    """获取所有清单"""
-    response = requests.get(
-        "https://api.dida365.com/api/v2/project/605be9f41207118e943acb64/completed/?from=&to=2024-04-21%2002:15:50&limit=50",
-        headers=headers,
-    )
-    print(response.text)
-    with open("task.json", "w") as f:
-        f.write(json.dumps(response.json(), indent=4, ensure_ascii=False))
-    print(response.status_code)
-
-
 def remove_duplicates(data):
     seen_ids = set()
     unique_data = []
@@ -193,9 +202,7 @@ def get_pomodoros():
             result.extend(l)
             completedTime = l[-1].get("startTime")
             to = pendulum.parse(completedTime).int_timestamp * 1000
-            # with open("pomodoros.json", "w") as f:
-            #     f.write(json.dumps(l, indent=4, ensure_ascii=False))
-            # break
+
         else:
             print(f"获取任务失败 {r.text}")
     results = remove_duplicates(result)
@@ -211,6 +218,114 @@ def get_pomodoros():
                 result["title"] = tasks[0].get("title")
                 result["task_id"] = tasks[0].get("taskId")
     return results
+
+
+def get_habits():
+    url = "https://api.dida365.com/api/v2/habits"
+    r = requests.get(
+        url=url,
+        headers=headers,
+    )
+    if r.ok:
+        return r.json()
+
+
+def get_habit_records():
+    """习惯记录"""
+    data = {
+        "habitIds": ["6672585af67d91037bde232c"],
+        "afterStamp": 20240320,
+    }
+    r = requests.post(
+        "https://api.dida365.com/api/v2/habitCheckins/query", headers=headers, json=data
+    )
+    if r.ok:
+        return r.json().get("checkins").get("6672585af67d91037bde232c")
+
+
+def insert_habit_records():
+    d = notion_helper.get_property_type(notion_helper.habit_record_database_id)
+    items = get_habit_records()
+    if items:
+        items = list(filter(is_habit_records_modified, items))
+        for index, item in enumerate(items):
+            print(f"一共{len(items)}个，当前是第{index+1}个")
+            id = item.get("id")
+            habit_id = item.get("habitId")
+            habit_name = utils.get_property_value(
+                habit_dict.get(habit_id).get("properties").get("标题")
+            )
+            habit_re_id = habit_dict.get(habit_id).get("id")
+            habit = {
+                "标题": habit_name,
+                "id": id,
+                "最后修改时间": utils.parse_date(item.get("opTime")),
+                "日期": utils.parse_date(str(item.get("checkinStamp"))),
+                "目标": item.get("goal"),
+                "值": item.get("value"),
+                "习惯": [habit_re_id],
+            }
+            parent = {
+                "database_id": notion_helper.habit_record_database_id,
+                "type": "database_id",
+            }
+            if item.get("checkinTime"):
+                habit["完成时间"] = utils.parse_date(item.get("checkinTime"))
+            properties = utils.get_properties(habit, d)
+            parent = {
+                "database_id": notion_helper.habit_record_database_id,
+                "type": "database_id",
+            }
+            icon = habit_dict.get(habit_id).get("icon")
+            if id in habit_record_dict:
+                notion_helper.update_page(
+                    page_id=habit_record_dict.get(id).get("id"),
+                    properties=properties,
+                    icon=icon,
+                )
+            else:
+                notion_helper.create_page(
+                    parent=parent, properties=properties, icon=icon
+                )
+
+
+def insert_habits():
+    d = notion_helper.get_property_type(notion_helper.habit_database_id)
+    items = get_habits()
+    if items:
+        items = list(filter(is_habit_modified, items))
+        for index, item in enumerate(items):
+            print(f"一共{len(items)}个，当前是第{index+1}个")
+            print(item.get("targetDays"))
+            id = item.get("id")
+            habit = {
+                "标题": item.get("name"),
+                "id": id,
+                "最后修改时间": utils.parse_date(item.get("modifiedTime")),
+                "单位": item.get("unit"),
+                "目标": item.get("goal"),
+                "目标天数": item.get("targetDays"),
+                "提示语": item.get("encouragement"),
+            }
+            properties = utils.get_properties(habit, d)
+            parent = {
+                "database_id": notion_helper.habit_database_id,
+                "type": "database_id",
+            }
+            icon = habit_icon_dict.get(item.get("iconRes"))
+            if icon is None:
+                icon = "https://www.notion.so/icons/alarm_clock_gray.svg"
+            if id in habit_dict:
+                notion_helper.update_page(
+                    page_id=habit_dict.get(id).get("id"),
+                    properties=properties,
+                    icon=habit_dict.get(id).get("icon"),
+                )
+            else:
+                result = notion_helper.create_page(
+                    parent=parent, properties=properties, icon=utils.get_icon(icon),
+                )
+                habit_dict[id] = result
 
 
 def insert_tamato():
@@ -273,7 +388,7 @@ def get_all_completed():
 
 
 def get_all_task():
-    """获取所有"""
+    """获取所有未完成的任务"""
     r = requests.get("https://api.dida365.com/api/v2/batch/check/0", headers=headers)
     results = []
     if r.ok:
@@ -286,7 +401,6 @@ def get_all_task():
 def get_task():
     """获取所有清单"""
     results = get_all_completed()
-    results = []
     results.extend(get_all_task())
     add_task_to_notion(results)
 
@@ -303,6 +417,7 @@ def add_task_to_notion(items, page_id=None):
             task["清单"] = [project_dict.get(item.get("projectId")).get("id")]
         if item.get("startDate"):
             task["开始时间"] = utils.parse_date(item.get("startDate"))
+            task["time"] = item.get("startDate")
         if item.get("dueDate"):
             task["结束时间"] = utils.parse_date(item.get("dueDate"))
         if item.get("modifiedTime"):
@@ -325,10 +440,13 @@ def add_task_to_notion(items, page_id=None):
         if item.get("completedTime"):
             task["状态"] = "Done"
             task["完成时间"] = utils.parse_date(item.get("completedTime"))
+            task["time"] = item.get("completedTime")
             icon = "https://www.notion.so/icons/checkmark_circle_green.svg"
             properties = utils.get_properties(task, d)
+        notion_helper.get_all_relation(properties)
+        if task.get("time"):
             notion_helper.get_date_relation(
-                properties, pendulum.parse(item.get("completedTime"))
+                properties, pendulum.parse(task.get("time"))
             )
         if id in todo_dict:
             result = notion_helper.update_page(
@@ -348,15 +466,21 @@ def add_task_to_notion(items, page_id=None):
 
 
 def add_content(page_id, content):
-    print(f"content = {content}")
-    l = mistletoe.markdown(content, NotionPyRenderer)
-    notion_helper = NotionHelper()
-    r = notion_helper.client.blocks.children.append(block_id=page_id, children=l)
+    blocks = mistletoe.markdown(content, NotionPyRenderer)
+    append_block(page_id, blocks)
+
+def append_block(block_id, blocks):
+    for block in blocks:
+        children = None
+        if block.get("children"):
+            children = block.pop("children")
+        id = notion_helper.client.blocks.children.append(block_id=block_id, children=[block]).get("results")[0].get("id")
+        if children:
+            append_block(id,children)
 
 
 if __name__ == "__main__":
     headers["cookie"] = os.getenv("COOKIE")
-    parser = argparse.ArgumentParser()
     notion_helper = NotionHelper()
     projects = notion_helper.query_all(notion_helper.project_database_id)
     project_dict = {}
@@ -373,3 +497,15 @@ if __name__ == "__main__":
     for tomato in tomatos:
         tomato_dict[utils.get_property_value(tomato.get("properties").get("id"))] = tomato
     insert_tamato()
+    habits = notion_helper.query_all(notion_helper.habit_database_id)
+    habit_dict = {}
+    for habit in habits:
+        habit_dict[utils.get_property_value(habit.get("properties").get("id"))] = habit
+    insert_habits()
+    habit_records = notion_helper.query_all(notion_helper.habit_record_database_id)
+    habit_record_dict = {}
+    for record in habit_records:
+        habit_record_dict[
+            utils.get_property_value(record.get("properties").get("id"))
+        ] = record
+    insert_habit_records()

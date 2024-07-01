@@ -5,7 +5,7 @@ import time
 
 from notion_client import Client
 from retrying import retry
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from utils import (
     format_date,
@@ -31,9 +31,12 @@ BOOKMARK_ICON_URL = "https://www.notion.so/icons/bookmark_gray.svg"
 class NotionHelper:
     database_name_dict = {
         "TODO_DATABASE_NAME": "任务",
+        "HABIT_RECORD_DATABASE_NAME": "打卡记录",
+        "HABIT_DATABASE_NAME": "习惯",
     }
     database_id_dict = {}
-    image_dict = {}
+    todo_heatmap_block_id = None
+    tomato_heatmap_block_id = None
     property_dict = {}
     def __init__(self):
         self.client = Client(auth=os.getenv("NOTION_TOKEN"), log_level=logging.ERROR)
@@ -45,6 +48,12 @@ class NotionHelper:
                 self.database_name_dict[key] = os.getenv(key)
         self.todo_database_id = self.database_id_dict.get(
             self.database_name_dict.get("TODO_DATABASE_NAME")
+        )     
+        self.habit_record_database_id = self.database_id_dict.get(
+            self.database_name_dict.get("HABIT_RECORD_DATABASE_NAME")
+        )       
+        self.habit_database_id = self.database_id_dict.get(
+            self.database_name_dict.get("HABIT_DATABASE_NAME")
         )
         r = self.client.databases.retrieve(database_id=self.todo_database_id)
         for key,value in r.get("properties").items():
@@ -57,9 +66,8 @@ class NotionHelper:
         self.month_database_id = self.get_relation_database_id(self.property_dict.get("月"))
         self.year_database_id = self.get_relation_database_id(self.property_dict.get("年"))
         self.all_database_id = self.get_relation_database_id(self.property_dict.get("全部"))
-        print(self.day_database_id)
-        # if self.day_database_id:
-        #     self.write_database_id(self.day_database_id)
+        if self.day_database_id:
+            self.write_database_id(self.day_database_id)
     
     def get_property_type(self,database_id):
         """获取一个database的property和类型的映射关系"""
@@ -96,20 +104,22 @@ class NotionHelper:
                 self.database_id_dict[child.get("child_database").get("title")] = (
                     child.get("id")
                 )
-            elif child["type"] == "image":
-                self.image_dict["url"] = child.get("image").get("external").get("url")
-                self.image_dict["id"] = child.get("id")
+            elif child["type"] == "embed" and child.get("embed").get("url"):
+                url =    child.get("embed").get("url")
+                if url.startswith("https://heatmap.malinkang.com/"):
+                    if("/tomato/" in url):
+                        self.tomato_heatmap_block_id = child.get("id")
+                    else:
+                        self.todo_heatmap_block_id = child.get("id")
             # 如果子块有子块，递归调用函数
             if "has_children" in child and child["has_children"]:
                 self.search_database(child["id"])
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
-    def update_image_block_link(self, block_id, new_image_url):
+    def update_heatmap(self, block_id, url):
         # 更新 image block 的链接
-        self.client.blocks.update(
-            block_id=block_id, image={"external": {"url": new_image_url}}
-        )
-
+        return self.client.blocks.update(block_id=block_id, embed={"url": url})
+    
     def get_week_relation_id(self, date):
         year = date.isocalendar().year
         week = date.isocalendar().week
@@ -235,8 +245,16 @@ class NotionHelper:
             has_more = response.get("has_more")
             results.extend(response.get("results"))
         return results
+    
+    def get_all_relation(self,properties):
+        properties["全部"] = get_relation(
+            [
+                self.get_relation_id("全部",self.all_database_id,TARGET_ICON_URL),
+            ]
+        )
 
     def get_date_relation(self, properties, date):
+        date = date + timedelta(hours=8)
         properties["年"] = get_relation(
             [
                 self.get_year_relation_id(date),
@@ -257,8 +275,4 @@ class NotionHelper:
                 self.get_day_relation_id(date),
             ]
         )
-        properties["全部"] = get_relation(
-            [
-                self.get_relation_id("全部",self.all_database_id,TARGET_ICON_URL),
-            ]
-        )
+
