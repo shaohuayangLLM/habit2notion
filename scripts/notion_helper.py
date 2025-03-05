@@ -18,6 +18,7 @@ from utils import (
     get_relation,
     get_rich_text,
     get_title,
+    get_property_value
 )
 from dotenv import load_dotenv
 
@@ -30,9 +31,9 @@ BOOKMARK_ICON_URL = "https://www.notion.so/icons/bookmark_gray.svg"
 
 class NotionHelper:
     database_name_dict = {
-        "TODO_DATABASE_NAME": "任务",
         "HABIT_RECORD_DATABASE_NAME": "打卡记录",
         "HABIT_DATABASE_NAME": "习惯",
+        "SETTING_DATABASE_NAME": "设置",
     }
     database_id_dict = {}
     todo_heatmap_block_id = None
@@ -46,29 +47,37 @@ class NotionHelper:
         for key in self.database_name_dict.keys():
             if os.getenv(key) != None and os.getenv(key) != "":
                 self.database_name_dict[key] = os.getenv(key)
-        self.todo_database_id = self.database_id_dict.get(
-            self.database_name_dict.get("TODO_DATABASE_NAME")
-        )     
         self.habit_record_database_id = self.database_id_dict.get(
             self.database_name_dict.get("HABIT_RECORD_DATABASE_NAME")
         )       
         self.habit_database_id = self.database_id_dict.get(
             self.database_name_dict.get("HABIT_DATABASE_NAME")
+        )       
+        self.setting_database_id = self.database_id_dict.get(
+            self.database_name_dict.get("SETTING_DATABASE_NAME")
         )
-        r = self.client.databases.retrieve(database_id=self.todo_database_id)
-        for key,value in r.get("properties").items():
-            self.property_dict[key] = value
-        self.day_database_id = self.get_relation_database_id(self.property_dict.get("日"))
-        self.project_database_id = self.get_relation_database_id(self.property_dict.get("清单"))
-        self.tag_database_id = self.get_relation_database_id(self.property_dict.get("标签"))
-        self.tomato_database_id = self.get_relation_database_id(self.property_dict.get("番茄专注"))
-        self.week_database_id = self.get_relation_database_id(self.property_dict.get("周"))
-        self.month_database_id = self.get_relation_database_id(self.property_dict.get("月"))
-        self.year_database_id = self.get_relation_database_id(self.property_dict.get("年"))
-        self.all_database_id = self.get_relation_database_id(self.property_dict.get("全部"))
-        if self.day_database_id:
-            self.write_database_id(self.day_database_id)
+        self.config = self.query_setting_data()
+   
+            
     
+    def query_setting_data(self):
+        """从设置数据库中查询标题为设置的数据"""
+        result = {}
+        query_filter = {
+            "property": "标题",
+            "title": {
+                "equals": "设置"
+            }
+        }
+        response = self.client.databases.query(
+            database_id=self.setting_database_id,
+            filter=query_filter
+        )
+        results = response.get("results")
+        if results:
+            for key,value in results[0].get("properties").items():
+               result[key] = get_property_value(value)
+        return result
     def get_property_type(self,database_id):
         """获取一个database的property和类型的映射关系"""
         result = {}
@@ -99,7 +108,6 @@ class NotionHelper:
         # 遍历子块
         for child in children:
             # 检查子块的类型
-
             if child["type"] == "child_database":
                 self.database_id_dict[child.get("child_database").get("title")] = (
                     child.get("id")
