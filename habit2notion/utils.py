@@ -7,7 +7,7 @@ import re
 import requests
 import base64
 import emoji
-from config import (
+from habit2notion.config import (
     RICH_TEXT,
     URL,
     RELATION,

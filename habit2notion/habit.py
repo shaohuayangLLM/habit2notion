@@ -6,22 +6,20 @@ import os
 import time
 
 import pendulum
-from notion_helper import NotionHelper, TAG_ICON_URL
 import mistletoe
-from notion_helper import NotionHelper
-from notion_renderer import NotionPyRenderer
+from habit2notion.notion_helper import NotionHelper
 import requests
 import utils
 import random
 from dotenv import load_dotenv
+from bson import ObjectId
 
 load_dotenv()
 
 habit_icon_dict = {
-    "habit_exercising":"https://www.notion.so/icons/gym_gray.svg",
-    "habit_drink_water":"https://www.notion.so/icons/drink_gray.svg"
+    "habit_exercising": "https://www.notion.so/icons/gym_gray.svg",
+    "habit_drink_water": "https://www.notion.so/icons/drink_gray.svg",
 }
-
 
 
 headers = {
@@ -45,10 +43,7 @@ headers = {
 }
 
 
-
-
-
-def is_habit_modified(habit_dict,item):
+def is_habit_modified(habit_dict, item):
     id = item.get("id")
     modified_time = utils.parse_date(item.get("modifiedTime"))
     habit = habit_dict.get(id)
@@ -61,7 +56,7 @@ def is_habit_modified(habit_dict,item):
     return True
 
 
-def is_habit_records_modified(habit_record_dict,item):
+def is_habit_records_modified(habit_record_dict, item):
     id = item.get("id")
     modified_time = utils.parse_date(item.get("opTime"))
     habit_record = habit_record_dict.get(id)
@@ -74,20 +69,17 @@ def is_habit_records_modified(habit_record_dict,item):
     return True
 
 
-
-
 def get_habits(session):
     url = "https://api.dida365.com/api/v2/habits"
     r = session.get(
         url=url,
         headers=headers,
     )
-    print(r.text)
     if r.ok:
         return r.json()
 
 
-def get_habit_records(session,habit_id):
+def get_habit_records(session, habit_id):
     """习惯记录"""
     data = {
         "habitIds": [habit_id],
@@ -100,11 +92,15 @@ def get_habit_records(session,habit_id):
         return r.json().get("checkins").get(habit_id)
 
 
-def insert_habit_records(session,habit_dict,habit_record_dict,habit_id):
+def insert_habit_records(session, habit_dict, habit_record_dict, habit_id):
     d = notion_helper.get_property_type(notion_helper.habit_record_database_id)
-    items = get_habit_records(session,habit_id)
+    items = get_habit_records(session, habit_id)
     if items:
-        items = list(filter(lambda item:is_habit_records_modified(habit_record_dict,item), items))
+        items = list(
+            filter(
+                lambda item: is_habit_records_modified(habit_record_dict, item), items
+            )
+        )
         for index, item in enumerate(items):
             print(f"一共{len(items)}个，当前是第{index+1}个")
             id = item.get("id")
@@ -147,10 +143,10 @@ def insert_habit_records(session,habit_dict,habit_record_dict,habit_id):
                 )
 
 
-def insert_habits(habit_dict,habits):
+def insert_habits(habit_dict, habits):
     d = notion_helper.get_property_type(notion_helper.habit_database_id)
     if habits:
-        items = list(filter(lambda item: is_habit_modified(habit_dict,item), habits))
+        items = list(filter(lambda item: is_habit_modified(habit_dict, item), habits))
         for index, item in enumerate(items):
             print(f"一共{len(items)}个，当前是第{index+1}个")
             print(item.get("targetDays"))
@@ -183,9 +179,12 @@ def insert_habits(habit_dict,habits):
                 habit["颜色"] = random.choice(["Red", "Green", "Blue"])
                 properties = utils.get_properties(habit, d)
                 result = notion_helper.create_page(
-                    parent=parent, properties=properties, icon=utils.get_icon(icon),
+                    parent=parent,
+                    properties=properties,
+                    icon=utils.get_icon(icon),
                 )
                 habit_dict[id] = result
+
 
 def login(username, password):
     session = requests.Session()
@@ -201,6 +200,29 @@ def login(username, password):
         return None
 
 
+def habit_check(session,date,habit_id,value,goal):
+    data = {
+        "add": [
+            {
+                "checkinStamp": date,
+                "checkinTime": pendulum.now().format("YYYY-MM-DDTHH:mm:ss.000+0000"),
+                "opTime": pendulum.now().format("YYYY-MM-DDTHH:mm:ss.000+0000"),
+                "goal": goal,
+                "habitId": habit_id,
+                "id": str(ObjectId()),
+                "status": 2,
+                "value": value,
+            }
+        ],
+        "update": [],
+        "delete": [],
+    }
+    response = session.post(
+        "https://api.dida365.com/api/v2/habitCheckins/batch", headers=headers, json=data
+    )
+    return response.ok
+
+
 def main():
     config = notion_helper.config
     username = config.get("滴答清单账号")
@@ -208,18 +230,32 @@ def main():
     session = login(username, password)
     habits = notion_helper.query_all(notion_helper.habit_database_id)
     habit_dict = {}
+    habit_dict2 = {}
     for habit in habits:
         habit_dict[utils.get_property_value(habit.get("properties").get("id"))] = habit
+        habit_dict2[habit.get("id")] = utils.get_property_value(habit.get("properties").get("id"))
     habits = get_habits(session)
-    insert_habits(habit_dict,habits)
+    insert_habits(habit_dict, habits)
     habit_records = notion_helper.query_all(notion_helper.habit_record_database_id)
     habit_record_dict = {}
     for record in habit_records:
-        habit_record_dict[
-            utils.get_property_value(record.get("properties").get("id"))
-        ] = record
+        record_id = utils.get_property_value(record.get("properties").get("id"))
+        if record_id:
+            habit_record_dict[record_id] = record
+        else: 
+            habit_relation_id = utils.get_property_value(record.get("properties").get("习惯"))
+            date = pendulum.from_timestamp(utils.get_property_value(record.get("properties").get("日期"))).format("YYYYMMDD")
+            value = int(utils.get_property_value(record.get("properties").get("值")))
+            goal = int(utils.get_property_value(record.get("properties").get("目标")))
+            if habit_relation_id:
+                habit_id = habit_dict2.get(habit_relation_id[0].get("id"))
+                if habit_id:
+                    if habit_check(session,date,habit_id,value,goal):
+                        # 如果打卡成功则删除notion页面
+                        notion_helper.delete_block(record.get("id"))
     for habit in habits:
-        insert_habit_records(session,habit_dict,habit_record_dict,habit.get("id"))
+        insert_habit_records(session, habit_dict, habit_record_dict, habit.get("id"))
+
 
 notion_helper = NotionHelper()
 if __name__ == "__main__":
