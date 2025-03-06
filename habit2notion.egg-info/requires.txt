@@ -5,4 +5,4 @@ notion-client
 github-heatmap
 python-dotenv
 emoji
-mistletoe
+bson

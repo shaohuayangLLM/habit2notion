@@ -1,7 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    version="0.0.1",
+    name="habit2notion",
+    version="0.0.3",
     packages=find_packages(),
     install_requires=[
         "requests",
@@ -11,11 +12,11 @@ setup(
         "github-heatmap",
         "python-dotenv",
         "emoji",
-        "mistletoe",
+        "bson",
     ],
     entry_points={
         "console_scripts": [
-            "todo = habit2notion.habit:main",
+            "habit2notion = habit2notion.habit:main",
             "update_heatmap = habit2notion.update_heatmap:main",
         ],
     },
@@ -24,7 +25,7 @@ setup(
     description="自动将习惯同步到Notion",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/malinkang/todo2notion",
+    url="https://github.com/malinkang/habit2notion",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

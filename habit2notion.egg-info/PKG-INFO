@@ -1,8 +1,8 @@
 Metadata-Version: 2.1
-Name: UNKNOWN
-Version: 0.0.1
+Name: habit2notion
+Version: 0.0.3
 Summary: 自动将习惯同步到Notion
-Home-page: https://github.com/malinkang/todo2notion
+Home-page: https://github.com/malinkang/habit2notion
 Author: malinkang
 Author-email: linkang.ma@gmail.com
 Classifier: Programming Language :: Python :: 3
@@ -17,7 +17,7 @@ Requires-Dist: notion-client
 Requires-Dist: github-heatmap
 Requires-Dist: python-dotenv
 Requires-Dist: emoji
-Requires-Dist: mistletoe
+Requires-Dist: bson
 
 # 滴答清单同步到Notion
 

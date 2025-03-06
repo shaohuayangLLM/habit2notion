@@ -113,7 +113,7 @@ class NotionHelper:
                     child.get("id")
                 )
             elif child["type"] == "embed" and child.get("embed").get("url"):
-                url =    child.get("embed").get("url")
+                url =  child.get("embed").get("url")
                 if url.startswith("https://heatmap.malinkang.com/"):
                     if("/tomato/" in url):
                         self.tomato_heatmap_block_id = child.get("id")
@@ -122,6 +122,16 @@ class NotionHelper:
             # 如果子块有子块，递归调用函数
             if "has_children" in child and child["has_children"]:
                 self.search_database(child["id"])
+    
+    def search_heatmap(self, block_id):
+        children = self.client.blocks.children.list(block_id=block_id)["results"]
+        # 遍历子块
+        for child in children:
+            # 检查子块的类型
+            if child["type"] == "embed" and child.get("embed").get("url"):
+                url =  child.get("embed").get("url")
+                if url.startswith("https://heatmap.malinkang.com/"):
+                    return child.get("id")
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def update_heatmap(self, block_id, url):
